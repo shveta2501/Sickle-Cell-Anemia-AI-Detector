@@ -5,15 +5,41 @@ from Bio import Align  # Advanced Smith-Waterman Local Alignment Engine
 from io import StringIO, BytesIO
 import re
 
+# New Libraries for 3D Molecular Simulation
+from stmol import make_viewer
+import py3Dmol
+
+# Optimization: Prevent model retraining on every UI rerun interaction
+@st.cache_resource
+def initialize_ml_models():
+    from sklearn.ensemble import RandomForestClassifier
+    import numpy as np
+
+    X_train = np.array([
+        [2, 25, 6.5, 4.0, 75.0],   # Severe SS case
+        [2, 28, 9.5, 22.0, 88.0],  # Mild SS case (High HbF protection)
+        [1, 30, 12.0, 2.0, 84.0],  # Normal Carrier AS
+        [0, 22, 14.5, 0.5, 90.0],  # Completely Healthy AA
+        [2, 12, 5.5, 6.0, 70.0],   # High risk pediatric SS
+        [1, 45, 11.0, 1.5, 82.0]   # Stable Adult AS
+    ])
+    
+    y_hospital = np.array([2, 0, 0, 0, 2, 1])
+    y_stroke   = np.array([2, 0, 0, 0, 1, 0])
+
+    model_hospital = RandomForestClassifier(n_estimators=50, random_state=42).fit(X_train, y_hospital)
+    model_stroke   = RandomForestClassifier(n_estimators=50, random_state=42).fit(X_train, y_stroke)
+    return model_hospital, model_stroke
+
 # 1. Page Configuration
 st.set_page_config(page_title="Genetic Disease Platform Pro", layout="centered", page_icon="🧬")
 st.title("🧬 AI Genetic Disease Detection Platform")
-st.write("Clinical Genomics, Dynamic Alignment (Smith-Waterman) & ML Engine")
+st.write("Clinical Genomics, Dynamic Alignment, ML Risk Core & 3D Mutation Simulator")
 st.caption("Production Pipeline Module • System Architect: Shveta")
 
 st.markdown("---")
 
-# --- MULTI-DISEASE CONFIGURATION PANEL (WITH NCBI REFERENCE MATRICES) ---
+# --- MULTI-DISEASE CONFIGURATION PANEL (WITH FIXED PDB ID) ---
 GENETIC_PANEL = {
     "Sickle Cell Anemia": {
         "gene": "HBB",
@@ -21,7 +47,8 @@ GENETIC_PANEL = {
         "mutant": "CCTGTGGAG",     # GTG Mutation
         "carrier_code": "W",       
         "locus": "Chromosome 11, HBB Locus (Codon 6)",
-        "ncbi_ref": "ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACT"  # Standard Exon 1 anchor segment
+        "ncbi_ref": "ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACT",  # Standard Exon 1 anchor segment
+        "pdb_id": "1A3N"  # Human Deoxyhemoglobin
     },
     "Beta Thalassemia (Nonsense)": {
         "gene": "HBB",
@@ -29,7 +56,8 @@ GENETIC_PANEL = {
         "mutant": "TAGGAGGCT",     
         "carrier_code": "Y",       
         "locus": "Chromosome 11, HBB Locus (Codon 39)",
-        "ncbi_ref": "AAGTCCAACTCCTAACCCAGGAGGCTCCTGGGGAGAAG"  # Codon 39 anchor segment
+        "ncbi_ref": "AAGTCCAACTCCTAACCCAGGAGGCTCCTGGGGAGAAG",  # Codon 39 anchor segment
+        "pdb_id": "2DNN"  # FIXED: Corrected 4-character RCSB PDB ID structural code
     }
 }
 
@@ -174,6 +202,31 @@ if uploaded_file is not None:
 
         st.markdown("---")
         
+        # --- 3D PROTEIN STRUCTURE MUTATION SIMULATION ---
+        st.subheader("🩻 Interactive 3D Protein Structure Mutation Simulation")
+        st.caption("Real-time rendering of structural targets from Protein Data Bank (RCSB PDB) mapping folding geometry.")
+        
+        style_choice = st.segmented_control("🎨 Select Molecular Render Style", ["cartoon", "sphere", "line", "stick"], default="cartoon")
+        
+        pdb_id = active_panel["pdb_id"]
+        
+        xyzview = py3Dmol.view(query=f'pdb:{pdb_id}')
+        xyzview.setStyle({style_choice: {'colorscheme': 'spectrum'}})
+        xyzview.zoomTo()
+        
+        if "SS" in genotype_status or "AS" in genotype_status:
+            st.warning(f"⚠️ Structural alert: Visualizing possible mutation disruption fold matrix on PDB Target: {pdb_id}")
+            xyzview.addResLabels({'resi': [6], 'chain': 'B'}, {'backgroundColor': 'lightgray', 'fontColor': 'red'})
+            xyzview.addSurface(py3Dmol.VDW, {'opacity': 0.3, 'color': 'red'}, {'resi': [6], 'chain': 'B'})
+        else:
+            st.success(f"✅ Displaying Wild-Type Stable Structural Geometry Template for PDB: {pdb_id}")
+            xyzview.addSurface(py3Dmol.VDW, {'opacity': 0.1, 'color': 'green'})
+
+        show_viewer = make_viewer(xyzview, width=700, height=450)
+        st.components.v1.html(show_viewer.html, height=460)
+        
+        st.markdown("---")
+        
         # 7. Virtual Restriction Fragment Length Polymorphism (RFLP Analysis)
         if selected_disease == "Sickle Cell Anemia":
             st.subheader("🧪 In-Silico Restriction Mapping (RFLP Validation)")
@@ -193,7 +246,7 @@ if uploaded_file is not None:
             
             st.markdown("---")
 
-        # --- 8. MULTI-OMICS PHENOTYPIC SEVERITY PREDICTOR (MACHINE LEARNING LAYER) ---
+        # --- 8. MULTI-OMICS PHENOTYPIC SEVERITY PREDICTOR ---
         st.subheader("🤖 Multi-Omics Phenotypic Severity Predictor (ML Engine)")
         st.caption("Hybrid Random Forest Classifier mapping genomic variance with clinical biomarkers.")
         
@@ -210,25 +263,14 @@ if uploaded_file is not None:
         genotype_map = {"AA (Normal / Wild-Type)": 0, "AS (Carrier / Trait Profile)": 1, "SS (Diseased / Homozygous Mutant)": 2}
         encoded_genotype = genotype_map.get(genotype_status, 1)
 
+        # Bug Prevention: Set defaults so PDF engine doesn't crash on NameError if ML execution throws an error
+        risk_score = 0
+        category = "UNDETERMINED"
+        action = "Metrics calibration pending execution."
+
         try:
-            from sklearn.ensemble import RandomForestClassifier
             import numpy as np
-
-            # Synthetic Training Matrix to calibrate the Random Forest live
-            X_train = np.array([
-                [2, 25, 6.5, 4.0, 75.0],   # Severe SS case
-                [2, 28, 9.5, 22.0, 88.0],  # Mild SS case (High HbF protection)
-                [1, 30, 12.0, 2.0, 84.0],  # Normal Carrier AS
-                [0, 22, 14.5, 0.5, 90.0],  # Completely Healthy AA
-                [2, 12, 5.5, 6.0, 70.0],   # High risk pediatric SS
-                [1, 45, 11.0, 1.5, 82.0]   # Stable Adult AS
-            ])
-            
-            y_hospital = np.array([2, 0, 0, 0, 2, 1])
-            y_stroke   = np.array([2, 0, 0, 0, 1, 0])
-
-            model_hospital = RandomForestClassifier(n_estimators=50, random_state=42).fit(X_train, y_hospital)
-            model_stroke   = RandomForestClassifier(n_estimators=50, random_state=42).fit(X_train, y_stroke)
+            model_hospital, model_stroke = initialize_ml_models()
 
             current_patient_features = np.array([[encoded_genotype, patient_age, hb_level, hbf_level, mcv_level]])
 
@@ -238,7 +280,6 @@ if uploaded_file is not None:
             hospitalization_risk_score = int((hosp_probs[2] * 0.7 + hosp_probs[1] * 0.3) * 100)
             stroke_risk_score = int((stroke_probs[2] * 0.8 + stroke_probs[1] * 0.2) * 100)
 
-            # Biomathematical logic override controls
             if "AA" in genotype_status:
                 hospitalization_risk_score, stroke_risk_score = max(2, hospitalization_risk_score // 10), max(1, stroke_risk_score // 12)
             elif "SS" in genotype_status and hbf_level > 20.0:
@@ -268,7 +309,6 @@ if uploaded_file is not None:
             action = f"Hospitalization Risk: {hospitalization_risk_score}%, Stroke Risk: {stroke_risk_score}%. Calibrated via Random Forest Machine Learning Matrix."
 
         except Exception as ml_err:
-            risk_score, category, action = 0, "UNKNOWN", "ML Engine Error"
             st.error(f"ML Core Integration Error: {ml_err}")
 
         # --- 9. IN-MEMORY REPORTLAB PDF GENERATOR ---

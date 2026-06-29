@@ -2,3 +2,5 @@ streamlit
 biopython
 reportlab
 scikit-learn
+stmol
+py3Dmol
