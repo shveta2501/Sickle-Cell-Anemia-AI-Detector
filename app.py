@@ -5,16 +5,38 @@ from Bio import Align  # Advanced Smith-Waterman Local Alignment Engine
 from io import StringIO, BytesIO
 import re
 
-# New Libraries for 3D Molecular Simulation
-from stmol import make_viewer
-import py3Dmol
-
-# Optimization: Prevent model retraining on every UI rerun interaction
-@st.cache_resource
-def initialize_ml_models():
+# Safely manage multi-omics dependencies 
+try:
     from sklearn.ensemble import RandomForestClassifier
     import numpy as np
+    HAS_ML = True
+except ImportError:
+    HAS_ML = False
 
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+
+# 1. Page Configuration
+st.set_page_config(page_title="Genetic Disease Platform Pro", layout="centered", page_icon="🧬")
+st.title("🧬 AI Genetic Disease Detection Platform")
+st.write("Clinical Genomics, Dynamic Alignment, ML Risk Core & 3D Mutation Simulator")
+st.caption("Production Pipeline Module • System Architect: Shveta")
+
+st.markdown("---")
+
+# --- CACHED ML MODEL INITIALIZATION ---
+@st.cache_resource
+def initialize_ml_cores():
+    if not HAS_ML:
+        return None, None
+    
+    # Synthetic training matrix matching genomic variance with clinical biomarkers
     X_train = np.array([
         [2, 25, 6.5, 4.0, 75.0],   # Severe SS case
         [2, 28, 9.5, 22.0, 88.0],  # Mild SS case (High HbF protection)
@@ -31,15 +53,9 @@ def initialize_ml_models():
     model_stroke   = RandomForestClassifier(n_estimators=50, random_state=42).fit(X_train, y_stroke)
     return model_hospital, model_stroke
 
-# 1. Page Configuration
-st.set_page_config(page_title="Genetic Disease Platform Pro", layout="centered", page_icon="🧬")
-st.title("🧬 AI Genetic Disease Detection Platform")
-st.write("Clinical Genomics, Dynamic Alignment, ML Risk Core & 3D Mutation Simulator")
-st.caption("Production Pipeline Module • System Architect: Shveta")
+model_hospital, model_stroke = initialize_ml_cores()
 
-st.markdown("---")
-
-# --- MULTI-DISEASE CONFIGURATION PANEL (WITH FIXED PDB ID) ---
+# --- MULTI-DISEASE CONFIGURATION PANEL (WITH NCBI REFERENCE MATRICES) ---
 GENETIC_PANEL = {
     "Sickle Cell Anemia": {
         "gene": "HBB",
@@ -57,7 +73,7 @@ GENETIC_PANEL = {
         "carrier_code": "Y",       
         "locus": "Chromosome 11, HBB Locus (Codon 39)",
         "ncbi_ref": "AAGTCCAACTCCTAACCCAGGAGGCTCCTGGGGAGAAG",  # Codon 39 anchor segment
-        "pdb_id": "2DNN"  # FIXED: Corrected 4-character RCSB PDB ID structural code
+        "pdb_id": "2DNN" # Human Hemoglobin variant
     }
 }
 
@@ -202,28 +218,28 @@ if uploaded_file is not None:
 
         st.markdown("---")
         
-        # --- 3D PROTEIN STRUCTURE MUTATION SIMULATION ---
+        # --- SECURE HIGH-SPEED HTML-3DMOL SIMULATOR LAYER ---
         st.subheader("🩻 Interactive 3D Protein Structure Mutation Simulation")
-        st.caption("Real-time rendering of structural targets from Protein Data Bank (RCSB PDB) mapping folding geometry.")
-        
-        style_choice = st.segmented_control("🎨 Select Molecular Render Style", ["cartoon", "sphere", "line", "stick"], default="cartoon")
+        st.caption("Universal CDN 3Dmol.js canvas loading structural configurations from RCSB PDB targets.")
         
         pdb_id = active_panel["pdb_id"]
         
-        xyzview = py3Dmol.view(query=f'pdb:{pdb_id}')
-        xyzview.setStyle({style_choice: {'colorscheme': 'spectrum'}})
-        xyzview.zoomTo()
-        
-        if "SS" in genotype_status or "AS" in genotype_status:
-            st.warning(f"⚠️ Structural alert: Visualizing possible mutation disruption fold matrix on PDB Target: {pdb_id}")
-            xyzview.addResLabels({'resi': [6], 'chain': 'B'}, {'backgroundColor': 'lightgray', 'fontColor': 'red'})
-            xyzview.addSurface(py3Dmol.VDW, {'opacity': 0.3, 'color': 'red'}, {'resi': [6], 'chain': 'B'})
-        else:
-            st.success(f"✅ Displaying Wild-Type Stable Structural Geometry Template for PDB: {pdb_id}")
-            xyzview.addSurface(py3Dmol.VDW, {'opacity': 0.1, 'color': 'green'})
-
-        show_viewer = make_viewer(xyzview, width=700, height=450)
-        st.components.v1.html(show_viewer.html, height=460)
+        html_string = f"""
+        <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+        <div id="container-3d" style="height: 400px; width: 100%; position: relative; border-radius:10px; border:1px solid #E2E8F0;"></div>
+        <script>
+            let element = document.getElementById('container-3d');
+            let config = {{ backgroundColor: '#F7FAFC' }};
+            let viewer = $3Dmol.createViewer(element, config);
+            
+            $3Dmol.download("pdb:{pdb_id}", viewer, {{}}, function() {{
+                viewer.setStyle({{}}, {{cartoon: {{color: 'spectrum'}}}});
+                viewer.zoomTo();
+                viewer.render();
+            }});
+        </script>
+        """
+        st.components.v1.html(html_string, height=420)
         
         st.markdown("---")
         
@@ -246,7 +262,7 @@ if uploaded_file is not None:
             
             st.markdown("---")
 
-        # --- 8. MULTI-OMICS PHENOTYPIC SEVERITY PREDICTOR ---
+        # --- 8. MULTI-OMICS PHENOTYPIC SEVERITY PREDICTOR (MACHINE LEARNING LAYER) ---
         st.subheader("🤖 Multi-Omics Phenotypic Severity Predictor (ML Engine)")
         st.caption("Hybrid Random Forest Classifier mapping genomic variance with clinical biomarkers.")
         
@@ -260,99 +276,97 @@ if uploaded_file is not None:
         with m4:
             mcv_level = st.slider("Mean Corpuscular Vol (MCV - fL)", min_value=50.0, max_value=120.0, value=85.0, step=1.0)
 
-        genotype_map = {"AA (Normal / Wild-Type)": 0, "AS (Carrier / Trait Profile)": 1, "SS (Diseased / Homozygous Mutant)": 2}
-        encoded_genotype = genotype_map.get(genotype_status, 1)
-
-        # Bug Prevention: Set defaults so PDF engine doesn't crash on NameError if ML execution throws an error
+        # Initialize tracking metrics safely across global layout scopes
         risk_score = 0
-        category = "UNDETERMINED"
-        action = "Metrics calibration pending execution."
+        category = "UNKNOWN"
+        action = "Uncalibrated diagnostic profile matrix."
 
-        try:
-            import numpy as np
-            model_hospital, model_stroke = initialize_ml_models()
+        if HAS_ML and model_hospital and model_stroke:
+            try:
+                genotype_map = {"AA (Normal / Wild-Type)": 0, "AS (Carrier / Trait Profile)": 1, "SS (Diseased / Homozygous Mutant)": 2}
+                encoded_genotype = genotype_map.get(genotype_status, 1)
 
-            current_patient_features = np.array([[encoded_genotype, patient_age, hb_level, hbf_level, mcv_level]])
+                current_patient_features = np.array([[encoded_genotype, patient_age, hb_level, hbf_level, mcv_level]])
 
-            hosp_probs = model_hospital.predict_proba(current_patient_features)[0]
-            stroke_probs = model_stroke.predict_proba(current_patient_features)[0]
+                hosp_probs = model_hospital.predict_proba(current_patient_features)[0]
+                stroke_probs = model_stroke.predict_proba(current_patient_features)[0]
 
-            hospitalization_risk_score = int((hosp_probs[2] * 0.7 + hosp_probs[1] * 0.3) * 100)
-            stroke_risk_score = int((stroke_probs[2] * 0.8 + stroke_probs[1] * 0.2) * 100)
+                hospitalization_risk_score = int((hosp_probs[2] * 0.7 + hosp_probs[1] * 0.3) * 100)
+                stroke_risk_score = int((stroke_probs[2] * 0.8 + stroke_probs[1] * 0.2) * 100)
 
-            if "AA" in genotype_status:
-                hospitalization_risk_score, stroke_risk_score = max(2, hospitalization_risk_score // 10), max(1, stroke_risk_score // 12)
-            elif "SS" in genotype_status and hbf_level > 20.0:
-                hospitalization_risk_score = max(15, hospitalization_risk_score - 40)
+                if "AA" in genotype_status:
+                    hospitalization_risk_score, stroke_risk_score = max(2, hospitalization_risk_score // 10), max(1, stroke_risk_score // 12)
+                elif "SS" in genotype_status and hbf_level > 20.0:
+                    hospitalization_risk_score = max(15, hospitalization_risk_score - 40)
 
-            p_col1, p_col2 = st.columns(2)
-            with p_col1:
-                st.metric(label="📊 Predicted Hospitalization Risk Index", value=f"{hospitalization_risk_score}%")
-                if hospitalization_risk_score >= 65:
-                    st.error("🚨 HIGH RISK: Frequent painful vaso-occlusive crises predicted.")
-                elif 30 <= hospitalization_risk_score < 65:
-                    st.warning("⚠️ MODERATE RISK: Baseline monitoring required.")
-                else:
-                    st.success("✅ LOW RISK: Clinical phenotype appears stable.")
+                p_col1, p_col2 = st.columns(2)
+                with p_col1:
+                    st.metric(label="📊 Predicted Hospitalization Risk Index", value=f"{hospitalization_risk_score}%")
+                    if hospitalization_risk_score >= 65:
+                        st.error("🚨 HIGH RISK: Frequent painful vaso-occlusive crises predicted.")
+                    elif 30 <= hospitalization_risk_score < 65:
+                        st.warning("⚠️ MODERATE RISK: Baseline monitoring required.")
+                    else:
+                        st.success("✅ LOW RISK: Clinical phenotype appears stable.")
 
-            with p_col2:
-                st.metric(label="🧠 Calculated Stroke Risk Criticality", value=f"{stroke_risk_score}%")
-                if stroke_risk_score >= 50:
-                    st.error("🚨 CRITICAL ALERT: Transcranial Doppler (TCD) screening urgent.")
-                elif 20 <= stroke_risk_score < 50:
-                    st.warning("⚠️ ELEVATED MONITORING: Periodic neurological tracking required.")
-                else:
-                    st.success("✅ STABLE STATUS: Low risk profile detected.")
+                with p_col2:
+                    st.metric(label="🧠 Calculated Stroke Risk Criticality", value=f"{stroke_risk_score}%")
+                    if stroke_risk_score >= 50:
+                        st.error("🚨 CRITICAL ALERT: Transcranial Doppler (TCD) screening urgent.")
+                    elif 20 <= stroke_risk_score < 50:
+                        st.warning("⚠️ ELEVATED MONITORING: Periodic neurological tracking required.")
+                    else:
+                        st.success("✅ STABLE STATUS: Low risk profile detected.")
 
-            risk_score = max(hospitalization_risk_score, stroke_risk_score)
-            category = "HIGH RISK" if risk_score >= 60 else ("MODERATE RISK" if risk_score >= 30 else "LOW RISK")
-            action = f"Hospitalization Risk: {hospitalization_risk_score}%, Stroke Risk: {stroke_risk_score}%. Calibrated via Random Forest Machine Learning Matrix."
+                risk_score = max(hospitalization_risk_score, stroke_risk_score)
+                category = "HIGH RISK" if risk_score >= 60 else ("MODERATE RISK" if risk_score >= 30 else "LOW RISK")
+                action = f"Hospitalization Risk: {hospitalization_risk_score}%, Stroke Risk: {stroke_risk_score}%. Calibrated via Random Forest Machine Learning Matrix."
 
-        except Exception as ml_err:
-            st.error(f"ML Core Integration Error: {ml_err}")
+            except Exception as ml_err:
+                st.error(f"ML Core Processing Error: {ml_err}")
+        else:
+            st.warning("ML Core Ecosystem unavailable. Please check numpy/scikit-learn local terminal alignment installations.")
 
         # --- 9. IN-MEMORY REPORTLAB PDF GENERATOR ---
         st.markdown("---")
         st.subheader("📥 Download Certified Diagnostics Report")
         
-        try:
-            from reportlab.lib.pagesizes import letter
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib import colors
+        if HAS_REPORTLAB:
+            try:
+                with BytesIO() as pdf_buffer:
+                    doc = SimpleDocTemplate(pdf_buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+                    styles = getSampleStyleSheet()
+                    story = []
 
-            with BytesIO() as pdf_buffer:
-                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
-                styles = getSampleStyleSheet()
-                story = []
+                    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, textColor=colors.HexColor("#1A365D"), spaceAfter=15)
+                    section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=13, textColor=colors.HexColor("#2B6CB0"), spaceBefore=10, spaceAfter=5)
+                    text_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=10, leading=14, textColor=colors.HexColor("#2D3748"))
 
-                title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, textColor=colors.HexColor("#1A365D"), spaceAfter=15)
-                section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=13, textColor=colors.HexColor("#2B6CB0"), spaceBefore=10, spaceAfter=5)
-                text_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=10, leading=14, textColor=colors.HexColor("#2D3748"))
+                    story.append(Paragraph("AI GENETIC DISEASE DETECTION PLATFORM", title_style))
+                    story.append(Paragraph(f"<b>Patient ID:</b> {patient_id}", text_style))
+                    story.append(Paragraph(f"<b>Targeted Panel:</b> {selected_disease}", text_style))
+                    story.append(Paragraph(f"<b>Resolved Genotype:</b> {genotype_status}", text_style))
+                    story.append(Paragraph(f"<b>Alignment Core Identity Score:</b> {identity_percentage:.2f}%", text_style))
+                    story.append(Paragraph(f"<b>Clinical Severity Score:</b> {risk_score}% ({category})", text_style))
+                    story.append(Spacer(1, 15))
+                    
+                    story.append(Paragraph("Diagnostic Advisory Matrix", section_style))
+                    story.append(Paragraph(action, text_style))
+                    story.append(Spacer(1, 15))
+                    story.append(Paragraph("Disclaimer: For Research Use Only (RUO). Final clinical assertions must be validated via chromatography protocols.", ParagraphStyle('Disc', parent=text_style, fontSize=8, textColor=colors.gray)))
 
-                story.append(Paragraph("AI GENETIC DISEASE DETECTION PLATFORM", title_style))
-                story.append(Paragraph(f"<b>Patient ID:</b> {patient_id}", text_style))
-                story.append(Paragraph(f"<b>Targeted Panel:</b> {selected_disease}", text_style))
-                story.append(Paragraph(f"<b>Resolved Genotype:</b> {genotype_status}", text_style))
-                story.append(Paragraph(f"<b>Alignment Core Identity Score:</b> {identity_percentage:.2f}%", text_style))
-                story.append(Paragraph(f"<b>Clinical Severity Score:</b> {risk_score}% ({category})", text_style))
-                story.append(Spacer(1, 15))
-                
-                story.append(Paragraph("Diagnostic Advisory Matrix", section_style))
-                story.append(Paragraph(action, text_style))
-                story.append(Spacer(1, 15))
-                story.append(Paragraph("Disclaimer: For Research Use Only (RUO). Final clinical assertions must be validated via chromatography protocols.", ParagraphStyle('Disc', parent=text_style, fontSize=8, textColor=colors.gray)))
+                    doc.build(story)
+                    pdf_data = pdf_buffer.getvalue()
 
-                doc.build(story)
-                pdf_data = pdf_buffer.getvalue()
-
-            st.download_button(
-                label="📥 Download Clinical PDF Report",
-                data=pdf_data,
-                file_name=f"Genomics_Report_{patient_id}.pdf",
-                mime="application/pdf"
-            )
-        except Exception as pdf_error:
+                st.download_button(
+                    label="📥 Download Clinical PDF Report",
+                    data=pdf_data,
+                    file_name=f"Genomics_Report_{patient_id}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as pdf_error:
+                st.error(f"Failed to compile PDF Report: {pdf_error}")
+        else:
             st.warning("Install 'reportlab' using terminal to enable certified PDF downloading features.")
 
         st.markdown("---")
