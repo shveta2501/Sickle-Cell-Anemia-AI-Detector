@@ -1,3 +1,4 @@
 streamlit
 biopython
 reportlab
+scikit-learn
