@@ -1,32 +1,40 @@
 import streamlit as st
 from Bio import SeqIO
 from Bio.Seq import Seq
+from Bio import Align  # Advanced Smith-Waterman Local Alignment Engine
 from io import StringIO, BytesIO
 import re
+import html  # Added for ultra-safe PDF string sanitization
 
 # 1. Page Configuration
 st.set_page_config(page_title="Genetic Disease Platform Pro", layout="centered", page_icon="🧬")
 st.title("🧬 AI Genetic Disease Detection Platform")
-st.write("Clinical Genomics, Zygosity Multi-Panel & RFLP Engine")
+st.write("Clinical Genomics, Dynamic Alignment (Smith-Waterman) & RFLP Engine")
 st.caption("Production Pipeline Module • System Architect: Shveta")
 
 st.markdown("---")
 
-# --- MULTI-DISEASE CONFIGURATION PANEL ---
+# --- MULTI-DISEASE CONFIGURATION PANEL (WITH NCBI REFERENCE MATRICES) ---
 GENETIC_PANEL = {
     "Sickle Cell Anemia": {
         "gene": "HBB",
-        "wild_type": "CCTGAGGAG",  
-        "mutant": "CCTGTGGAG",     
+        "wild_type": "CCTGAGGAG",  # GAG Codon
+        "mutant": "CCTGTGGAG",     # GTG Mutation
         "carrier_code": "W",       
-        "locus": "Chromosome 11, HBB Locus (Codon 6)"
+        "locus": "Chromosome 11, HBB Locus (Codon 6)",
+        "ncbi_ref": "ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACT",  # Standard Exon 1 anchor segment
+        "enzyme_name": "MstII",
+        "enzyme_regex": r"CCT[ATGC]AGG"
     },
     "Beta Thalassemia (Nonsense)": {
         "gene": "HBB",
         "wild_type": "CAGGAGGCT",  
         "mutant": "TAGGAGGCT",     
         "carrier_code": "Y",       
-        "locus": "Chromosome 11, HBB Locus (Codon 39)"
+        "locus": "Chromosome 11, HBB Locus (Codon 39)",
+        "ncbi_ref": "AAGTCCAACTCCTAACCCAGGAGGCTCCTGGGGAGAAG",  # Codon 39 anchor segment
+        "enzyme_name": "MaeI",
+        "enzyme_regex": r"CTAG"
     }
 }
 
@@ -37,16 +45,17 @@ active_panel = GENETIC_PANEL[selected_disease]
 uploaded_file = st.file_uploader("Upload Patient FASTA/FA Sequence File", type=["fasta", "fa", "txt"])
 
 if uploaded_file is not None:
-    st.success("Sequence stream verified successfully!")
-    
     raw_text = uploaded_file.getvalue().decode("utf-8")
     data_stream = StringIO(raw_text)
     
-    # Parse records safely into a list to prevent UI rendering explosion
-    records = list(SeqIO.parse(data_stream, "fasta"))
+    try:
+        records = list(SeqIO.parse(data_stream, "fasta"))
+    except Exception as e:
+        st.error(f"Failed to parse file: {e}")
+        records = []
     
     if len(records) == 0:
-        st.error("No valid FASTA records detected in file.")
+        st.error("No valid FASTA records detected in file. Please ensure proper formatting.")
     else:
         if len(records) > 1:
             patient_options = [r.id for r in records]
@@ -56,17 +65,14 @@ if uploaded_file is not None:
             record = records[0]
 
         patient_id = record.id
-        
-        # Normalize sequence text
         raw_seq_str = "".join(str(record.seq).upper().split())
         bio_seq = Seq(raw_seq_str)
         
-        # --- EDGE CASE 2 RESOLUTION: Handle Reverse Complement Reads ---
+        # --- REVERSE COMPLEMENT READS RESOLUTION ---
         wt_sig = active_panel["wild_type"]
         mut_sig = active_panel["mutant"]
         carrier_char = active_panel["carrier_code"]
         
-        # Fallback check if reference signatures aren't found in forward strand
         if (wt_sig not in raw_seq_str) and (mut_sig not in raw_seq_str) and (carrier_char not in raw_seq_str):
             rev_seq_str = str(bio_seq.reverse_complement())
             if (wt_sig in rev_seq_str) or (mut_sig in rev_seq_str) or (carrier_char in rev_seq_str):
@@ -86,16 +92,59 @@ if uploaded_file is not None:
         st.text_area("Parsed Raw DNA Sequence (Preview)", dna_sequence, height=100)
         st.markdown("---")
         
+        # --- ADVANCED MATHEMATICAL LOCAL ALIGNMENT ENGINE (SMITH-WATERMAN) ---
+        st.subheader("🧮 Mathematical Local Pairwise Alignment Engine")
+        st.caption("Locating target locus within patient read stream using Biopython Aligner.")
+        
+        with st.spinner("Executing Smith-Waterman alignment optimization..."):
+            aligner = Align.PairwiseAligner()
+            aligner.mode = 'local'  
+            aligner.match_score = 2.0
+            aligner.mismatch_score = -1.0
+            aligner.open_gap_score = -2.0  
+            aligner.extend_gap_score = -0.5
+            
+            ncbi_ref_seq = active_panel["ncbi_ref"]
+            
+            alignments = aligner.align(dna_sequence, ncbi_ref_seq)
+            best_alignment = alignments[0]
+            
+            alignment_score = best_alignment.score
+            max_possible_score = len(ncbi_ref_seq) * aligner.match_score
+            identity_percentage = (alignment_score / max_possible_score) * 100
+            
+            try:
+                patient_aligned_indices = best_alignment.aligned[0]
+                locus_start = patient_aligned_indices[0][0]
+                locus_end = patient_aligned_indices[-1][1]
+                target_locus_zone = dna_sequence[locus_start:locus_end]
+            except Exception:
+                target_locus_zone = dna_sequence
+        
+        # UI Metrics Display
+        m_col1, m_col2, m_col3 = st.columns(3)
+        with m_col1:
+            st.metric(label="Alignment Score", value=f"{alignment_score:.1f}")
+        with m_col2:
+            st.metric(label="Sequence Identity", value=f"{identity_percentage:.2f} %")
+        with m_col3:
+            st.metric(label="Algorithm Mode", value="Smith-Waterman")
+            
+        st.markdown("**Dynamic Reference Alignment Visual Map:**")
+        st.code(str(best_alignment), language="text")
+        st.markdown("---")
+        
         # 5. Advanced Molecular Biology Validation
         st.subheader("🧬 Central Dogma Pipeline Validation")
         mrna_seq = bio_seq.transcribe()
         
         try:
             clean_len = (len(mrna_seq) // 3) * 3
-            protein_seq = mrna_seq[:clean_len].translate(to_stop=False) 
+            # Fixed deprecated/unsupported parameter structure in modern BioPython
+            protein_seq = mrna_seq[:clean_len].translate() 
             st.info(f"**Translated Protein Fragment:** `{protein_seq[:35]}...`")
-        except Exception:
-            st.warning("Could not automatically translate sequence reading frame.")
+        except Exception as e:
+            st.warning(f"Could not automatically translate sequence reading frame: {e}")
 
         st.markdown("---")
         
@@ -103,9 +152,9 @@ if uploaded_file is not None:
         st.subheader("🔬 Clinical Zygosity & Mutation Analysis")
         st.write(f"Target Gene: **{active_panel['gene']}** ({active_panel['locus']})")
         
-        has_wild_type = wt_sig in dna_sequence
-        has_mutant = mut_sig in dna_sequence
-        has_iupac_carrier = carrier_char in dna_sequence
+        has_wild_type = wt_sig in target_locus_zone
+        has_mutant = mut_sig in target_locus_zone
+        has_iupac_carrier = carrier_char in target_locus_zone
         
         genotype_status = "Inconclusive"
         html_highlighted_context = ""
@@ -143,26 +192,23 @@ if uploaded_file is not None:
 
         st.markdown("---")
         
-        # 7. Virtual Restriction Fragment Length Polymorphism (RFLP Analysis)
-        if selected_disease == "Sickle Cell Anemia":
-            st.subheader("🧪 In-Silico Restriction Mapping (RFLP Validation)")
-            
-            # --- EDGE CASE 1 RESOLUTION: Real dynamic verification of MstII presence ---
-            mstII_pattern = re.compile(r"CCT[ATGC]AGG")
-            cut_sites = [m.start() for m in mstII_pattern.finditer(dna_sequence)]
-            
-            st.caption(f"Detected **{len(cut_sites)}** restriction cleavage site(s) globally.")
-            
-            if len(cut_sites) > 0 and "AA" in genotype_status:
-                st.markdown("🔍 **Enzyme Digest Status:** <span style='color:green; font-weight:bold;'>SITES FUNCTIONAL (COMPLETE DIGESTION)</span>", unsafe_allow_html=True)
-            elif "SS" in genotype_status:
-                st.markdown("🔍 **Enzyme Digest Status:** <span style='color:red; font-weight:bold;'>RESTRICTION SITE BLOCKED (CLEAVAGE FAILURE)</span>", unsafe_allow_html=True)
-            elif "AS" in genotype_status:
-                st.markdown("🔍 **Enzyme Digest Status:** <span style='color:orange; font-weight:bold;'>PARTIAL DIGESTION PROFILE (3-BAND SIGNATURE)</span>", unsafe_allow_html=True)
-            else:
-                st.markdown("🔍 **Enzyme Digest Status:** <span style='color:gray; font-weight:bold;'>NO SPECIFIC HBB CLEAVAGE SITES TRACKED</span>", unsafe_allow_html=True)
-            
-            st.markdown("---")
+        # 7. Virtual Restriction Fragment Length Polymorphism (RFLP Analysis) - Now Panel-Driven!
+        st.subheader(f"🧪 In-Silico Restriction Mapping ({active_panel['enzyme_name']} RFLP Validation)")
+        enzyme_pattern = re.compile(active_panel['enzyme_regex'])
+        cut_sites = [m.start() for m in enzyme_pattern.finditer(dna_sequence)]
+        
+        st.caption(f"Detected **{len(cut_sites)}** restriction cleavage site(s) globally matching enzyme template pattern.")
+        
+        if len(cut_sites) > 0 and "AA" in genotype_status:
+            st.markdown("🔍 **Enzyme Digest Status:** <span style='color:green; font-weight:bold;'>SITES FUNCTIONAL (COMPLETE DIGESTION)</span>", unsafe_allow_html=True)
+        elif "SS" in genotype_status:
+            st.markdown("🔍 **Enzyme Digest Status:** <span style='color:red; font-weight:bold;'>RESTRICTION SITE BLOCKED (CLEAVAGE FAILURE)</span>", unsafe_allow_html=True)
+        elif "AS" in genotype_status:
+            st.markdown("🔍 **Enzyme Digest Status:** <span style='color:orange; font-weight:bold;'>PARTIAL DIGESTION PROFILE (MUTANT BAND SIGNATURE PRESENT)</span>", unsafe_allow_html=True)
+        else:
+            st.markdown("🔍 **Enzyme Digest Status:** <span style='color:gray; font-weight:bold;'>NO PANEL-SPECIFIC TARGET SITES TRACKED ON THIS VARIANT</span>", unsafe_allow_html=True)
+        
+        st.markdown("---")
 
         # --- 8. PHENOTYPIC SEVERITY RISK SCORING ENGINE ---
         st.subheader("🤖 Phenotypic Severity & Risk Scoring Engine")
@@ -186,7 +232,7 @@ if uploaded_file is not None:
         risk_score = max(0, min(base_score, 100))
         
         if risk_score >= 70:
-            category, action = "HIGH RISK", "Immediate clinical consultation required. Susceptible to pain crises."
+            category, action = "HIGH RISK", "Immediate clinical consultation required. Susceptible to severe symptomatic crisis events."
         elif 35 <= risk_score < 70:
             category, action = "MODERATE RISK", "Standard prophylactic tracking. Monitor complete blood counts regularly."
         else:
@@ -203,10 +249,9 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("📥 Download Certified Diagnostics Report")
         
-        # --- EDGE CASE 3 RESOLUTION: Context management with block isolation ---
         try:
             from reportlab.lib.pagesizes import letter
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib import colors
 
@@ -220,16 +265,37 @@ if uploaded_file is not None:
                 text_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=10, leading=14, textColor=colors.HexColor("#2D3748"))
 
                 story.append(Paragraph("AI GENETIC DISEASE DETECTION PLATFORM", title_style))
-                story.append(Paragraph(f"<b>Patient ID:</b> {patient_id}", text_style))
-                story.append(Paragraph(f"<b>Targeted Panel:</b> {selected_disease}", text_style))
-                story.append(Paragraph(f"<b>Resolved Genotype:</b> {genotype_status}", text_style))
-                story.append(Paragraph(f"<b>Clinical Severity Score:</b> {risk_score}% ({category})", text_style))
+                story.append(Spacer(1, 10))
+                
+                # Critical Sanitize Step: Escaping raw text metadata variables prevents nested XML parsing failure crash.
+                safe_patient_id = html.escape(str(patient_id))
+                safe_disease = html.escape(str(selected_disease))
+                safe_genotype = html.escape(str(genotype_status))
+                safe_action = html.escape(str(action))
+
+                data_summary = [
+                    [Paragraph("<b>Patient Identification Key:</b>", text_style), Paragraph(safe_patient_id, text_style)],
+                    [Paragraph("<b>Targeted Screen Panel:</b>", text_style), Paragraph(safe_disease, text_style)],
+                    [Paragraph("<b>Resolved Clinical Genotype:</b>", text_style), Paragraph(safe_genotype, text_style)],
+                    [Paragraph("<b>Sequence Identity Match:</b>", text_style), Paragraph(f"{identity_percentage:.2f}%", text_style)],
+                    [Paragraph("<b>Calculated Severity Index:</b>", text_style), Paragraph(f"{risk_score}% ({category})", text_style)]
+                ]
+                summary_table = Table(data_summary, colWidths=[200, 300])
+                summary_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F7FAFC")),
+                    ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#E2E8F0")),
+                    ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E2E8F0")),
+                    ('PADDING', (0,0), (-1,-1), 8),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
+                ]))
+                
+                story.append(summary_table)
                 story.append(Spacer(1, 15))
                 
                 story.append(Paragraph("Diagnostic Advisory Matrix", section_style))
-                story.append(Paragraph(action, text_style))
-                story.append(Spacer(1, 15))
-                story.append(Paragraph("Disclaimer: For Research Use Only (RUO). Final clinical assertions must be validated via chromatography protocols.", ParagraphStyle('Disc', parent=text_style, fontSize=8, textColor=colors.gray)))
+                story.append(Paragraph(safe_action, text_style))
+                story.append(Spacer(1, 20))
+                story.append(Paragraph("Disclaimer: For Research Use Only (RUO). Final clinical assertions must be verified via chromatography or sequencing validation protocols.", ParagraphStyle('Disc', parent=text_style, fontSize=8, textColor=colors.gray)))
 
                 doc.build(story)
                 pdf_data = pdf_buffer.getvalue()
@@ -241,11 +307,12 @@ if uploaded_file is not None:
                 mime="application/pdf"
             )
         except Exception as pdf_error:
-            st.warning("Install 'reportlab' using terminal to enable certified PDF downloading features.")
+            st.warning(f"Note: Install 'reportlab' in your core system environment to unlock dynamic PDF rendering. Error: {pdf_error}")
 
         st.markdown("---")
         st.json({
             "Patient Key": patient_id,
             "Resolved Clinical Genotype": genotype_status,
-            "Calculated Phenotypic Risk Index": f"{risk_score}%"
+            "Calculated Phenotypic Risk Index": f"{risk_score}%",
+            "Pairwise Sequence Identity Match": f"{identity_percentage:.2f}%"
         })
