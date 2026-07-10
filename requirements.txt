@@ -2,3 +2,8 @@ streamlit
 biopython
 reportlab
 scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+fpdf
