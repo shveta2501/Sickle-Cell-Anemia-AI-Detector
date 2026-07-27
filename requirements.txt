@@ -1,9 +1,12 @@
 streamlit
-biopython
-reportlab
-scikit-learn
 pandas
 numpy
+requests
+reportlab
+pydantic
+psutil
+urllib3
+biopython
+scikit-learn
 matplotlib
 seaborn
-fpdf
